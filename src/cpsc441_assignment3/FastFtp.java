@@ -7,7 +7,7 @@ import java.io.*;
  * FastFtp Class
  * 
  * FastFtp implements a basic FTP application based on UDP data transmission.
- * The main mehtod is send() which takes a file name as input argument and send the file 
+ * The main method is send() which takes a file name as input argument and send the file 
  * to the specified destination host.
  * 
  */
@@ -20,9 +20,8 @@ public class FastFtp {
      * @param rtoTimer		The time-out interval for the retransmission timer (in milli-seconds)
      */
 	public FastFtp(int windowSize, int rtoTimer) {
-		//
-		// to be completed
-		//
+            //TODO complete implementation of FastFtp
+            
 	}
 	
 
@@ -38,9 +37,7 @@ public class FastFtp {
      * @param fileName		Name of the file to be trasferred to the rmeote server
      */
 	public void send(String serverName, int serverPort, String fileName) {
-		//
-		// to be completed
-		//
+            // TODO complete implementation of sender
 	}
 
 	
