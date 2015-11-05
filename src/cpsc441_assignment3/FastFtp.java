@@ -14,9 +14,10 @@ import java.util.logging.Logger;
  *
  */
 public class FastFtp {
-
     int windowSize;
     int timeout;
+    private int segmentID;
+    public enum PacketStates { SEND, TIMEOUT, RESEND, WAIT }; 
 
     /**
      * Constructor to initialize the program
@@ -28,6 +29,8 @@ public class FastFtp {
     public FastFtp(int windowSize, int rtoTimer) {
         //TODO complete implementation of FastFtp
         this.windowSize = windowSize;
+        timeout = rtoTimer;
+        segmentID = 0;
     }
 
     /**
@@ -40,27 +43,73 @@ public class FastFtp {
      * @param fileName	Name of the file to be trasferred to the rmeote server
      */
     public void send(String serverName, int serverPort, String fileName) {
-        DataInputStream dataStream = null;
-        try {
-            // TODO complete implementation of sender
-            dataStream = new DataInputStream(new FileInputStream(fileName));
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(FastFtp.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        TxQueue packets = new TxQueue(1000);
         int count;
         byte[] buffer = new byte[Segment.MAX_PAYLOAD_SIZE];
+        DataInputStream dataStream = null;
         try {
-            while ((count = dataStream.read(buffer)) != -1) {
-                DatagramPacket packets[] = new DatagramPacket[1000];
-                packets[0] = new DatagramPacket(buffer, count, InetAddress.getByName(serverName), serverPort);
-                for (int i = 1; i < packets.length && (count = dataStream.read(buffer)) != -1; i++) {
-                    packets[i] = new DatagramPacket(buffer, count, InetAddress.getByName(serverName), serverPort);
-                }
-                /////////////////////////////////////////////////////////////////////
-                //       Now we have an array of 
-            }
-        } catch (IOException ex)    {
+            dataStream = new DataInputStream(new FileInputStream(fileName));
+        } catch (FileNotFoundException ex) {
             //TODO deal with this exception
+        }
+        boolean terminate = false;
+        try {
+            while (true) {
+                for (int i = 0; i < 1000; i++) {
+                    if ((count = dataStream.read(buffer)) == -1) {
+                        terminate = true;
+                        break;
+                    }
+                    packets.add(new Segment(segmentID, buffer));
+                    if (segmentID == windowSize - 1)    {
+                        segmentID = 0;
+                    } else  {
+                        segmentID++;
+                    }
+                }
+                if (terminate)
+                    break;
+                sendPackets(packets, serverName, serverPort);
+            }
+        } catch (IOException ex) {
+            //TODO deal with this exception
+        } catch (InterruptedException ex) {
+            //TODO deal with this exception
+        }
+    }
+    
+    private void sendPackets(TxQueue packets, String server, int port)  {
+        PacketStates currentState = PacketStates.SEND;
+        while (true)    {
+            switch (currentState)   {
+                case SEND:
+                    
+                    
+                    
+                    break;
+                    
+                case WAIT:
+                    
+                    
+                    
+                    
+                    break;
+                    
+                case RESEND:
+                    
+                    
+                    
+                    
+                    break;
+                    
+                case TIMEOUT:
+                    
+                    
+                    
+                    
+                    break;
+                    
+            }
         }
     }
 
