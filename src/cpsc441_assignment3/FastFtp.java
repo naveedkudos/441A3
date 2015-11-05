@@ -2,6 +2,8 @@
 import java.io.*;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -34,84 +36,75 @@ public class FastFtp {
     }
 
     /**
-     * Sends the specified file to the specified destination host: 1. send file
-     * name and receiver server confirmation over TCP 2. send file segment by
-     * segment over UDP 3. send end of transmission over tcp 3. clean up
+     * <h1>Sends the specified file to the specified destination host:</h1><p> 1. send file
+     * name and receiver server confirmation over TCP</p><p> 2. send file segment by
+     * segment over UDP 3. send end of transmission over TCP</p><p> 3. clean up</p>
      *
      * @param serverName	Name of the remote server
      * @param serverPort	Port number of the remote server
-     * @param fileName	Name of the file to be trasferred to the rmeote server
+     * @param fileName	Name of the file to be transferred to the remote server
      */
     public void send(String serverName, int serverPort, String fileName) {
-        TxQueue packets = new TxQueue(1000);
-        int count;
-        byte[] buffer = new byte[Segment.MAX_PAYLOAD_SIZE];
-        DataInputStream dataStream = null;
+        ///////////////////////////////////////////////////////////////////////////////////
+        //  Open up TCP socket to complete handshake with the server before transmission //
+        ///////////////////////////////////////////////////////////////////////////////////
+        
+        Socket socket_TCP;
         try {
-            dataStream = new DataInputStream(new FileInputStream(fileName));
-        } catch (FileNotFoundException ex) {
+            socket_TCP = new Socket(InetAddress.getByName(serverName), serverPort);
+        } catch (UnknownHostException ex) {
             //TODO deal with this exception
-        }
-        boolean terminate = false;
-        try {
-            while (true) {
-                for (int i = 0; i < 1000; i++) {
-                    if ((count = dataStream.read(buffer)) == -1) {
-                        terminate = true;
-                        break;
-                    }
-                    packets.add(new Segment(segmentID, buffer));
-                    if (segmentID == windowSize - 1)    {
-                        segmentID = 0;
-                    } else  {
-                        segmentID++;
-                    }
-                }
-                if (terminate)
-                    break;
-                sendPackets(packets, serverName, serverPort);
-            }
         } catch (IOException ex) {
             //TODO deal with this exception
-        } catch (InterruptedException ex) {
-            //TODO deal with this exception
         }
+        
+        
     }
     
-    private void sendPackets(TxQueue packets, String server, int port)  {
-        PacketStates currentState = PacketStates.SEND;
-        while (true)    {
-            switch (currentState)   {
-                case SEND:
-                    
-                    
-                    
-                    break;
-                    
-                case WAIT:
-                    
-                    
-                    
-                    
-                    break;
-                    
-                case RESEND:
-                    
-                    
-                    
-                    
-                    break;
-                    
-                case TIMEOUT:
-                    
-                    
-                    
-                    
-                    break;
-                    
-            }
-        }
+     /**<h1>Process Send</h1>
+     * <ol>
+     * <li>Send segment to the UDP socket</li>
+     * <li>Add segment to the transmission queue txQueue</li>
+     * <li>if txQueue.size() == 1, start the timer</li>
+     * </ol>
+     * @param ack 
+     */
+    public synchronized void processSend(Segment seg)   {
+        
     }
+    
+    /**<h1>Process ACK</h1>
+     * <ul>
+     * <li>If ACK not in the current window, do nothing</li>
+     * <li>Otherwise:</li>
+     * <ul> <li>Cancel the timer</li>
+     *      <li><p>
+     *          while(txQueue.element().getSeqNum() &lt ack.getSeqNum())
+     *          </p><p>
+     *          &#9;txQueue.remove();
+     *          </p></li><li>
+     *          if not txQueue.isEmpty(), start timer
+     *      </li>
+     * </ul>
+     * </ul>
+     * @param ack 
+     */
+    public synchronized void processACK(Segment ack)    {
+        
+    }
+    
+    /**<h1>Process Timeout</h1>
+     * <ol>
+     * <li>Get the list of all pending segments by calling txQueue.toArray()</li>
+     * <li>Go through the list and send all segments to the UDP socket</li>
+     * <li>If not txQueue.isEmpty(), start the timer</li>
+     * </ol>
+     */
+    public synchronized void processTimeout()   {
+        
+    }
+    
+    
 
     /**
      * A simple test driver
