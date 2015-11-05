@@ -1,6 +1,7 @@
 package cpsc441_assignment3;
 
 import java.io.*;
+import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -150,7 +151,8 @@ public class FastFtp {
      * @param ack 
      */
     public synchronized void processSend(Segment seg)   {
-        
+        DatagramPacket pkt;
+        pkt = new DatagramPacket();
     }
     
     /**<h1>Process ACK</h1>
