@@ -1,11 +1,9 @@
+package cpsc441_assignment3;
 
 import java.io.*;
-import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * FastFtp Class
@@ -16,10 +14,9 @@ import java.util.logging.Logger;
  *
  */
 public class FastFtp {
-    int windowSize;
     int timeout;
     private int segmentID;
-    public enum PacketStates { SEND, TIMEOUT, RESEND, WAIT }; 
+    TxQueue window;
 
     /**
      * Constructor to initialize the program
@@ -30,7 +27,7 @@ public class FastFtp {
      */
     public FastFtp(int windowSize, int rtoTimer) {
         //TODO complete implementation of FastFtp
-        this.windowSize = windowSize;
+        window = new TxQueue(windowSize);
         timeout = rtoTimer;
         segmentID = 0;
     }
@@ -38,7 +35,7 @@ public class FastFtp {
     /**
      * <h1>Sends the specified file to the specified destination host:</h1><p> 1. send file
      * name and receiver server confirmation over TCP</p><p> 2. send file segment by
-     * segment over UDP 3. send end of transmission over TCP</p><p> 3. clean up</p>
+     * segment over UDP </p><p>3. send end of transmission over TCP</p><p> 4. clean up</p>
      *
      * @param serverName	Name of the remote server
      * @param serverPort	Port number of the remote server
@@ -49,14 +46,97 @@ public class FastFtp {
         //  Open up TCP socket to complete handshake with the server before transmission //
         ///////////////////////////////////////////////////////////////////////////////////
         
-        Socket socket_TCP;
+        Socket socket_TCP = null;
+        DataOutputStream handshakeOut = null;
+        DataInputStream handshakeIn = null;
+        byte response = 1;
         try {
             socket_TCP = new Socket(InetAddress.getByName(serverName), serverPort);
+            handshakeOut = new DataOutputStream(socket_TCP.getOutputStream());
+            handshakeOut.write((fileName).getBytes());
+            handshakeIn = new DataInputStream(socket_TCP.getInputStream());
+            response = handshakeIn.readByte();
         } catch (UnknownHostException ex) {
             //TODO deal with this exception
         } catch (IOException ex) {
             //TODO deal with this exception
         }
+        
+        if (response == 0)  {
+            // Server ready for file transmission TODO finish this
+            
+        } else  {
+            // Error TODO finish this
+            
+        }
+        
+        
+        
+        ///////////////////////////////////////////////////////////////////////////////////
+        //                          Start ACK recieving thread                           //
+        ///////////////////////////////////////////////////////////////////////////////////
+        
+        Thread ackThread = null;
+        ackThread = new Thread(new Acknowledge(serverPort, this));
+        ackThread.start();  //TODO ensure to clean up if needed
+        
+        
+        ///////////////////////////////////////////////////////////////////////////////////
+        //                Create dataInputStream from file                               //
+        ///////////////////////////////////////////////////////////////////////////////////
+        DataInputStream fileInput = null;
+        try {
+            fileInput = new DataInputStream(new FileInputStream(fileName));
+            int count = -1;
+            byte[] buffer = new byte[Segment.MAX_PAYLOAD_SIZE];
+            while ((count = fileInput.read(buffer)) != -1) {
+
+        
+            ///////////////////////////////////////////////////////////////////////////////////
+            //                Create segment with next sequence number                       //
+            ///////////////////////////////////////////////////////////////////////////////////
+                Segment segment = new Segment(segmentID, buffer);
+                if (segmentID == window.size() - 1)    {
+                    segmentID = 0;
+                } else  {
+                    segmentID++;
+                }
+                
+            ///////////////////////////////////////////////////////////////////////////////////
+            //              Yield to other threads if queue is full                          //
+            ///////////////////////////////////////////////////////////////////////////////////
+                while (window.isFull())     {
+                    Thread.yield();
+                }
+        
+            ///////////////////////////////////////////////////////////////////////////////////
+            //                          Send the segment                                     //
+            ///////////////////////////////////////////////////////////////////////////////////
+                processSend(segment);
+            }
+        } catch (FileNotFoundException ex) {
+            // TODO deal with this exception
+        } catch (IOException ex) {
+            //TODO deal with this exception
+        }
+
+        
+        
+        ///////////////////////////////////////////////////////////////////////////////////
+        //       Wait until queue is empty, send end of transmission message             //
+        ///////////////////////////////////////////////////////////////////////////////////
+        
+        while (!window.isEmpty())   {
+            Thread.yield();
+        }
+        try {
+            handshakeOut.writeByte(0);
+        } catch (IOException ex) {
+            //TODO deal with this exception
+        }
+        ///////////////////////////////////////////////////////////////////////////////////
+        //                              Clean Up                                         //
+        ///////////////////////////////////////////////////////////////////////////////////
         
         
     }
