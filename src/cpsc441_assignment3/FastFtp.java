@@ -113,11 +113,7 @@ public class FastFtp {
             //                Create segment with next sequence number                       //
             ///////////////////////////////////////////////////////////////////////////////////
                 Segment segment = new Segment(segmentID, buffer);
-                if (segmentID == window.size() * 2)    {
-                    segmentID = 0;
-                } else  {
-                    segmentID++;
-                }
+                segmentID++;
                 
             ///////////////////////////////////////////////////////////////////////////////////
             //              Yield to other threads if queue is full                          //
@@ -206,25 +202,20 @@ public class FastFtp {
      * @param ack 
      */
     public synchronized void processACK(Segment ack)    {
-        // Check if the sequence number is in the current window
-        boolean inWindow;
-        if (window.element().getSeqNum() > window.size())   {
-            if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < (window.size() * 2)
-                    || ack.getSeqNum() >= 0 && ack.getSeqNum() < (window.element().getSeqNum() - window.size()))    
-                inWindow = true;
-            else    {
-                inWindow = false;
+        if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < window.element().getSeqNum() + window.size())  {
+            while (window.element().getSeqNum() <= ack.getSeqNum()) {
+                try {
+                    window.remove();
+                } catch (InterruptedException ex) {
+                    //TODO deal with exception
+                }
             }
-        } else  {
-            if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < window.element().getSeqNum() + window.size())
-                inWindow = true;
-            else
-                inWindow = false;
+            if (!window.isEmpty())  {
+                // TODO start timer / restart timer
+                timer.cancel();
+                timer.schedule(new TimerHandler(this), timeout);
+            }
         }
-        if (!inWindow)  {
-            return;
-        }
-        
     }
     
     /**<h1>Process Timeout</h1>
@@ -235,7 +226,14 @@ public class FastFtp {
      * </ol>
      */
     public synchronized void processTimeout()   {
-        
+        Segment[] segments = window.toArray();
+        for (Segment i: segments)   {
+            processSend(i);
+        }
+        if (!window.isEmpty())  {
+            timer.cancel();
+            timer.schedule(new TimerHandler(this), timeout);
+        }
     }
     
     
