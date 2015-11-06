@@ -7,6 +7,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -25,6 +26,8 @@ public class FastFtp {
     TxQueue window;
     DatagramSocket socket_UDP;
     Timer timer;
+    String serverName;
+    int serverPort;
 
     /**
      * Constructor to initialize the program
@@ -53,19 +56,9 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         //  Open up TCP socket to complete handshake with the server before transmission //
         ///////////////////////////////////////////////////////////////////////////////////
-        //TODO remove this
-        System.out.println("Starting to send file client side...");
+        this.serverName = serverName;
+        this.serverPort = serverPort;
         
-        try {
-            socket_UDP = new DatagramSocket(serverPort, InetAddress.getByName(serverName));
-        } catch (SocketException ex) {
-            //TODO deal with this exception
-            ex.printStackTrace();
-        } catch (UnknownHostException ex) {
-            //TODO deal with this exception
-            ex.printStackTrace();
-        }
-        System.out.println("Line 68");//TODO remove this
         Socket socket_TCP = null;
         DataOutputStream handshakeOut = null;
         DataInputStream handshakeIn = null;
@@ -73,23 +66,29 @@ public class FastFtp {
         try {
             socket_TCP = new Socket(InetAddress.getByName(serverName), serverPort);
             handshakeOut = new DataOutputStream(socket_TCP.getOutputStream());
-            handshakeOut.write((fileName + "\r\n\r\n").getBytes());
+            handshakeOut.writeUTF(fileName);
             handshakeIn = new DataInputStream(socket_TCP.getInputStream());
-            System.out.println("Line 78");//TODO remove this
             response = handshakeIn.readByte();
-            System.out.println("Line 80");//TODO remove this
         } catch (UnknownHostException ex) {
             //TODO deal with this exception
             ex.printStackTrace();
+            System.exit(-1);
         } catch (IOException ex) {
             //TODO deal with this exception
             ex.printStackTrace();
         }
-        System.out.println("Line 86");//TODO remove this
         if (response != 0)  {
             System.out.println("Error FastFtp line 85, not deal with");
+            System.exit(-1);
             //TODO deal with this error
         }
+        try {
+            socket_UDP = new DatagramSocket();
+        } catch (SocketException ex) {
+            //TODO deal with this exception
+            ex.printStackTrace();
+            System.exit(-1);
+        } 
         
         
         
@@ -119,6 +118,7 @@ public class FastFtp {
             //                Create segment with next sequence number                       //
             ///////////////////////////////////////////////////////////////////////////////////
                 Segment segment = new Segment(segmentID, buffer);
+            // TODO make sure that the you don't need to use count here
                 segmentID++;
                 
                 System.out.println("Packet number " + (segmentID - 1) + " created");//TODO remove this
@@ -157,8 +157,8 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         //       Wait until queue is empty, send end of transmission message             //
         ///////////////////////////////////////////////////////////////////////////////////
-        
-        System.out.println("Send end of transmission");//TODO remove this
+        System.out.println("Wait to send end of transmission message");//TODO remove this
+        System.out.println("There are currently " + window.size() + " segments in the window");
         while (!window.isEmpty())   {
             Thread.yield();
         }
@@ -168,6 +168,7 @@ public class FastFtp {
             //TODO deal with this exception
             ex.printStackTrace();
         }
+        System.out.println("Send end of transmission");//TODO remove this
         ///////////////////////////////////////////////////////////////////////////////////
         //                              Clean Up                                         //
         ///////////////////////////////////////////////////////////////////////////////////
@@ -191,12 +192,17 @@ public class FastFtp {
      */
     public synchronized void processSend(Segment seg) {
         // Send the segment
-        DatagramPacket pkt;
-        pkt = new DatagramPacket(seg.getBytes(), Segment.MAX_SEGMENT_SIZE);
+        DatagramPacket pkt = null;
+        try {
+            pkt = new DatagramPacket(seg.getBytes(), Segment.MAX_SEGMENT_SIZE, InetAddress.getByName(serverName), serverPort);
+        } catch (UnknownHostException ex) {
+            ex.printStackTrace();
+        }
         try {
             socket_UDP.send(pkt);
         } catch (IOException ex) {
-            
+            ex.printStackTrace();
+            System.exit(-1);
         }
         
         // Add the segment to the queue
@@ -230,9 +236,11 @@ public class FastFtp {
      * @param ack the received ack
      */
     public synchronized void processACK(Segment ack)    {
-        if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < window.element().getSeqNum() + window.size())  {
+        System.out.println("Starting to process ACK");
+        if (ack.getSeqNum() >= window.element().getSeqNum() && (ack.getSeqNum() < (window.element().getSeqNum() + window.size())))  {
             while (window.element().getSeqNum() <= ack.getSeqNum()) {
                 try {
+                    System.out.println("Removing segment from window");
                     window.remove();
                 } catch (InterruptedException ex) {
                     //TODO deal with exception
@@ -241,6 +249,7 @@ public class FastFtp {
             }
             if (!window.isEmpty())  {
                 timer.cancel();
+                timer = new Timer();
                 timer.schedule(new TimerHandler(this), timeout);
             }
         }
@@ -260,6 +269,7 @@ public class FastFtp {
         }
         if (!window.isEmpty())  {
             timer.cancel();
+            timer = new Timer();
             timer.schedule(new TimerHandler(this), timeout);
         }
     }

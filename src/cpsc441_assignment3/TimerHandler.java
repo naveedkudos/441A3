@@ -15,7 +15,11 @@ public class TimerHandler extends TimerTask {
     
     @Override
     public void run() {
-        parent.processTimeout();
+        try {
+            parent.processTimeout(); 
+        } catch (IllegalStateException ex)  {
+            ex.printStackTrace();
+            System.exit(-1);
+        }
     }
-    
 }

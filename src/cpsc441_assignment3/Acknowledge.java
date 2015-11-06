@@ -18,9 +18,10 @@ public class Acknowledge extends Thread {
     FastFtp parent;
     
     public Acknowledge(int serverPort, FastFtp parent)    {
+        System.out.println("Starting the ACK Thread");
         TERMINATE = false;
         try {
-            server = new DatagramSocket(serverPort);
+            server = new DatagramSocket();
         } catch (SocketException ex) {
             // TODO deal with this exception
             ex.printStackTrace();
@@ -31,10 +32,12 @@ public class Acknowledge extends Thread {
     @Override
     public void run() {
         while (!TERMINATE)  {
+            System.out.println("Running ");
             byte[] data = new byte[Segment.MAX_PAYLOAD_SIZE];
             DatagramPacket pkt = new DatagramPacket(data, data.length);
             try {
                 server.receive(pkt);
+                System.out.println("Received a packet from the server");
             } catch (IOException ex) {
                 // TODO deal with this exception
                 ex.printStackTrace();
