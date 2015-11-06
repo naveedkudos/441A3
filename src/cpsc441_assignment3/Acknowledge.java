@@ -4,14 +4,12 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Deals with recieving ACK's in parallel with sending segments
  * @author brad
  */
-public class Acknowledge implements Runnable {
+public class Acknowledge extends Thread {
     /**
      * Use this to terminate the thread safely
      */
@@ -25,6 +23,7 @@ public class Acknowledge implements Runnable {
             server = new DatagramSocket(serverPort);
         } catch (SocketException ex) {
             // TODO deal with this exception
+            ex.printStackTrace();
         }
         this.parent = parent;
     }
@@ -38,6 +37,7 @@ public class Acknowledge implements Runnable {
                 server.receive(pkt);
             } catch (IOException ex) {
                 // TODO deal with this exception
+                ex.printStackTrace();
             }
             parent.processACK(new Segment(pkt)); // TODO make sure it can't block here
         }

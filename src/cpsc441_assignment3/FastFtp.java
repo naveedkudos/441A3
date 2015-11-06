@@ -34,7 +34,6 @@ public class FastFtp {
      * milli-seconds)
      */
     public FastFtp(int windowSize, int rtoTimer) {
-        //TODO complete implementation of FastFtp
         window = new TxQueue(windowSize);
         timeout = rtoTimer;
         segmentID = 0;
@@ -54,15 +53,19 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         //  Open up TCP socket to complete handshake with the server before transmission //
         ///////////////////////////////////////////////////////////////////////////////////
+        //TODO remove this
+        System.out.println("Starting to send file client side...");
         
         try {
             socket_UDP = new DatagramSocket(serverPort, InetAddress.getByName(serverName));
         } catch (SocketException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
         } catch (UnknownHostException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
         }
-        
+        System.out.println("Line 68");//TODO remove this
         Socket socket_TCP = null;
         DataOutputStream handshakeOut = null;
         DataInputStream handshakeIn = null;
@@ -70,21 +73,22 @@ public class FastFtp {
         try {
             socket_TCP = new Socket(InetAddress.getByName(serverName), serverPort);
             handshakeOut = new DataOutputStream(socket_TCP.getOutputStream());
-            handshakeOut.write((fileName).getBytes());
+            handshakeOut.write((fileName + "\r\n\r\n").getBytes());
             handshakeIn = new DataInputStream(socket_TCP.getInputStream());
+            System.out.println("Line 78");//TODO remove this
             response = handshakeIn.readByte();
+            System.out.println("Line 80");//TODO remove this
         } catch (UnknownHostException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
         } catch (IOException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
         }
-        
-        if (response == 0)  {
-            // Server ready for file transmission TODO finish this
-            
-        } else  {
-            // Error TODO finish this
-            
+        System.out.println("Line 86");//TODO remove this
+        if (response != 0)  {
+            System.out.println("Error FastFtp line 85, not deal with");
+            //TODO deal with this error
         }
         
         
@@ -93,8 +97,10 @@ public class FastFtp {
         //                          Start ACK recieving thread                           //
         ///////////////////////////////////////////////////////////////////////////////////
         
-        Thread ackThread = null;
-        ackThread = new Thread(new Acknowledge(serverPort, this));
+        System.out.println("Start ACK recieving thread");//TODO remove this 
+        
+        Acknowledge ackThread = null;
+        ackThread = new Acknowledge(serverPort, this);
         ackThread.start();  //TODO ensure to clean up if needed
         
         
@@ -115,22 +121,35 @@ public class FastFtp {
                 Segment segment = new Segment(segmentID, buffer);
                 segmentID++;
                 
+                System.out.println("Packet number " + (segmentID - 1) + " created");//TODO remove this
+                
             ///////////////////////////////////////////////////////////////////////////////////
             //              Yield to other threads if queue is full                          //
             ///////////////////////////////////////////////////////////////////////////////////
                 while (window.isFull())     {
                     Thread.yield();
                 }
+                System.out.println("Finished yielding to threads waiting for space in queue");//TODO remove this
         
             ///////////////////////////////////////////////////////////////////////////////////
             //                          Send the segment                                     //
             ///////////////////////////////////////////////////////////////////////////////////
                 processSend(segment);
+                System.out.println("Segment " + segment.getSeqNum() + " has been sent");//TODO remove this
             }
         } catch (FileNotFoundException ex) {
             // TODO deal with this exception
+            ex.printStackTrace();
         } catch (IOException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
+        } finally   {
+            try {
+                fileInput.close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                //TODO deal with exception
+            }
         }
 
         
@@ -139,6 +158,7 @@ public class FastFtp {
         //       Wait until queue is empty, send end of transmission message             //
         ///////////////////////////////////////////////////////////////////////////////////
         
+        System.out.println("Send end of transmission");//TODO remove this
         while (!window.isEmpty())   {
             Thread.yield();
         }
@@ -146,12 +166,19 @@ public class FastFtp {
             handshakeOut.writeByte(0);
         } catch (IOException ex) {
             //TODO deal with this exception
+            ex.printStackTrace();
         }
         ///////////////////////////////////////////////////////////////////////////////////
         //                              Clean Up                                         //
         ///////////////////////////////////////////////////////////////////////////////////
-        
-        
+        try {
+            socket_TCP.close();
+            socket_UDP.close();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            //TODO deal with exception
+        }
+        ackThread.terminate();
     }
     
      /**<h1>Process Send</h1>
@@ -160,7 +187,7 @@ public class FastFtp {
      * <li>Add segment to the transmission queue txQueue</li>
      * <li>if txQueue.size() == 1, start the timer</li>
      * </ol>
-     * @param ack 
+     * @param seg the segment to send
      */
     public synchronized void processSend(Segment seg) {
         // Send the segment
@@ -177,6 +204,7 @@ public class FastFtp {
             window.add(seg);
         } catch (InterruptedException ex) {
             // TODO deal with exception
+            ex.printStackTrace();
         }
         
         if (window.size() == 1)     {
@@ -199,7 +227,7 @@ public class FastFtp {
      *      </li>
      * </ul>
      * </ul>
-     * @param ack 
+     * @param ack the received ack
      */
     public synchronized void processACK(Segment ack)    {
         if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < window.element().getSeqNum() + window.size())  {
@@ -208,10 +236,10 @@ public class FastFtp {
                     window.remove();
                 } catch (InterruptedException ex) {
                     //TODO deal with exception
+                    ex.printStackTrace();
                 }
             }
             if (!window.isEmpty())  {
-                // TODO start timer / restart timer
                 timer.cancel();
                 timer.schedule(new TimerHandler(this), timeout);
             }
