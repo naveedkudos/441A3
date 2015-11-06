@@ -2,9 +2,14 @@ package cpsc441_assignment3;
 
 import java.io.*;
 import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.Timer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * FastFtp Class
@@ -18,6 +23,8 @@ public class FastFtp {
     int timeout;
     private int segmentID;
     TxQueue window;
+    DatagramSocket socket_UDP;
+    Timer timer;
 
     /**
      * Constructor to initialize the program
@@ -31,6 +38,7 @@ public class FastFtp {
         window = new TxQueue(windowSize);
         timeout = rtoTimer;
         segmentID = 0;
+        socket_UDP = null;
     }
 
     /**
@@ -46,6 +54,14 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         //  Open up TCP socket to complete handshake with the server before transmission //
         ///////////////////////////////////////////////////////////////////////////////////
+        
+        try {
+            socket_UDP = new DatagramSocket(serverPort, InetAddress.getByName(serverName));
+        } catch (SocketException ex) {
+            //TODO deal with this exception
+        } catch (UnknownHostException ex) {
+            //TODO deal with this exception
+        }
         
         Socket socket_TCP = null;
         DataOutputStream handshakeOut = null;
@@ -97,7 +113,7 @@ public class FastFtp {
             //                Create segment with next sequence number                       //
             ///////////////////////////////////////////////////////////////////////////////////
                 Segment segment = new Segment(segmentID, buffer);
-                if (segmentID == window.size() - 1)    {
+                if (segmentID == window.size() * 2)    {
                     segmentID = 0;
                 } else  {
                     segmentID++;
@@ -150,9 +166,27 @@ public class FastFtp {
      * </ol>
      * @param ack 
      */
-    public synchronized void processSend(Segment seg)   {
+    public synchronized void processSend(Segment seg) {
+        // Send the segment
         DatagramPacket pkt;
-        pkt = new DatagramPacket();
+        pkt = new DatagramPacket(seg.getBytes(), Segment.MAX_SEGMENT_SIZE);
+        try {
+            socket_UDP.send(pkt);
+        } catch (IOException ex) {
+            
+        }
+        
+        // Add the segment to the queue
+        try {
+            window.add(seg);
+        } catch (InterruptedException ex) {
+            // TODO deal with exception
+        }
+        
+        if (window.size() == 1)     {
+            timer = new Timer(true);
+            timer.schedule(new TimerHandler(this), timeout);
+        }
     }
     
     /**<h1>Process ACK</h1>
@@ -172,6 +206,24 @@ public class FastFtp {
      * @param ack 
      */
     public synchronized void processACK(Segment ack)    {
+        // Check if the sequence number is in the current window
+        boolean inWindow;
+        if (window.element().getSeqNum() > window.size())   {
+            if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < (window.size() * 2)
+                    || ack.getSeqNum() >= 0 && ack.getSeqNum() < (window.element().getSeqNum() - window.size()))    
+                inWindow = true;
+            else    {
+                inWindow = false;
+            }
+        } else  {
+            if (ack.getSeqNum() >= window.element().getSeqNum() && ack.getSeqNum() < window.element().getSeqNum() + window.size())
+                inWindow = true;
+            else
+                inWindow = false;
+        }
+        if (!inWindow)  {
+            return;
+        }
         
     }
     
