@@ -28,6 +28,8 @@ public class FastFtp {
     Timer timer;
     String serverName;
     int serverPort;
+    
+    boolean DEBUG = true;
 
     /**
      * Constructor to initialize the program
@@ -58,6 +60,16 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         this.serverName = serverName;
         this.serverPort = serverPort;
+        if (DEBUG)  
+            System.out.println("Attempting to send file " + fileName + " to server: " + serverName + " " + serverPort);
+        // Check to ensure file exists
+        
+        File file = new File(fileName);
+        if (!file.exists()) {
+            System.out.println("File does not exist");
+            return;
+        }
+        
         
         Socket socket_TCP = null;
         DataOutputStream handshakeOut = null;
@@ -70,24 +82,44 @@ public class FastFtp {
             handshakeIn = new DataInputStream(socket_TCP.getInputStream());
             response = handshakeIn.readByte();
         } catch (UnknownHostException ex) {
-            //TODO deal with this exception
-            ex.printStackTrace();
-            System.exit(-1);
+            System.out.println("Host cannot be found");
+            try {
+                socket_TCP.close();
+            } catch (IOException ex1) {
+                // Acceptable
+            }
+            return;
         } catch (IOException ex) {
-            //TODO deal with this exception
-            ex.printStackTrace();
+            System.out.println("An error has occurred");
+            try {
+                handshakeOut.writeByte(0);
+                socket_TCP.close();
+            } catch (IOException ex1) {
+            } catch (NullPointerException ex1)  {}
+            return;
         }
         if (response != 0)  {
-            System.out.println("Error FastFtp line 85, not deal with");
-            System.exit(-1);
-            //TODO deal with this error
+            System.out.println("No server response, terminating attempt");
+            try {
+                handshakeOut.writeByte(0);
+                socket_TCP.close();
+            } catch (IOException ex) {
+                // Acceptable exception
+            }
+            return;
         }
         try {
-            socket_UDP = new DatagramSocket();
+            socket_UDP = new DatagramSocket(socket_TCP.getLocalPort());
         } catch (SocketException ex) {
-            //TODO deal with this exception
             ex.printStackTrace();
-            System.exit(-1);
+            try {
+                handshakeOut.writeByte(0);
+                socket_TCP.close();
+                socket_UDP.close();
+            } catch (IOException ex1) {
+                // Acceptable exception
+            }
+            return;
         } 
         
         
@@ -96,11 +128,10 @@ public class FastFtp {
         //                          Start ACK recieving thread                           //
         ///////////////////////////////////////////////////////////////////////////////////
         
-        System.out.println("Start ACK recieving thread");//TODO remove this 
         
         Acknowledge ackThread = null;
-        ackThread = new Acknowledge(serverPort, this);
-        ackThread.start();  //TODO ensure to clean up if needed
+        ackThread = new Acknowledge(socket_UDP, this);
+        ackThread.start();  
         
         
         ///////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +139,7 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         DataInputStream fileInput = null;
         try {
-            fileInput = new DataInputStream(new FileInputStream(fileName));
+            fileInput = new DataInputStream(new FileInputStream(file));
             int count = -1;
             byte[] buffer = new byte[Segment.MAX_PAYLOAD_SIZE];
             while ((count = fileInput.read(buffer)) != -1) {
@@ -117,11 +148,9 @@ public class FastFtp {
             ///////////////////////////////////////////////////////////////////////////////////
             //                Create segment with next sequence number                       //
             ///////////////////////////////////////////////////////////////////////////////////
-                Segment segment = new Segment(segmentID, buffer);
-            // TODO make sure that the you don't need to use count here
+                Segment segment = new Segment(segmentID, Arrays.copyOf(buffer, count));
                 segmentID++;
                 
-                System.out.println("Packet number " + (segmentID - 1) + " created");//TODO remove this
                 
             ///////////////////////////////////////////////////////////////////////////////////
             //              Yield to other threads if queue is full                          //
@@ -129,26 +158,44 @@ public class FastFtp {
                 while (window.isFull())     {
                     Thread.yield();
                 }
-                System.out.println("Finished yielding to threads waiting for space in queue");//TODO remove this
         
             ///////////////////////////////////////////////////////////////////////////////////
             //                          Send the segment                                     //
             ///////////////////////////////////////////////////////////////////////////////////
                 processSend(segment);
-                System.out.println("Segment " + segment.getSeqNum() + " has been sent");//TODO remove this
             }
         } catch (FileNotFoundException ex) {
-            // TODO deal with this exception
-            ex.printStackTrace();
+            // Should never throw this exception (already been checked for)
+            try {
+                handshakeOut.writeByte(0);
+            } catch (IOException ex1) {
+                System.out.println("Could not terminate transfer");
+            }
+            try {
+                socket_TCP.close();
+                socket_UDP.close();
+                ackThread.terminate();
+                ackThread.interrupt();
+            } catch (IOException ex1) {
+                System.out.println("Could not close socket(s)");
+            }
+            return;
         } catch (IOException ex) {
-            //TODO deal with this exception
             ex.printStackTrace();
+            ackThread.terminate();
+            ackThread.interrupt();
+            try {
+                handshakeOut.writeByte(0);
+                socket_TCP.close();
+                socket_UDP.close();
+            } catch (IOException ex1) {
+                //Acceptable exception
+            }
         } finally   {
             try {
                 fileInput.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
-                //TODO deal with exception
+                // This exception is permitted
             }
         }
 
@@ -157,18 +204,15 @@ public class FastFtp {
         ///////////////////////////////////////////////////////////////////////////////////
         //       Wait until queue is empty, send end of transmission message             //
         ///////////////////////////////////////////////////////////////////////////////////
-        System.out.println("Wait to send end of transmission message");//TODO remove this
-        System.out.println("There are currently " + window.size() + " segments in the window");
         while (!window.isEmpty())   {
             Thread.yield();
         }
         try {
             handshakeOut.writeByte(0);
         } catch (IOException ex) {
-            //TODO deal with this exception
-            ex.printStackTrace();
+            System.out.println("could not terminate transmission with server");
+            System.exit(-1);
         }
-        System.out.println("Send end of transmission");//TODO remove this
         ///////////////////////////////////////////////////////////////////////////////////
         //                              Clean Up                                         //
         ///////////////////////////////////////////////////////////////////////////////////
@@ -176,10 +220,11 @@ public class FastFtp {
             socket_TCP.close();
             socket_UDP.close();
         } catch (IOException ex) {
-            ex.printStackTrace();
-            //TODO deal with exception
+            // This is permitted
         }
         ackThread.terminate();
+        ackThread.interrupt();
+        timer.cancel();
     }
     
      /**<h1>Process Send</h1>
@@ -191,10 +236,12 @@ public class FastFtp {
      * @param seg the segment to send
      */
     public synchronized void processSend(Segment seg) {
+        if (DEBUG)
+            System.out.println("Sending segment " + seg.getSeqNum());
         // Send the segment
         DatagramPacket pkt = null;
         try {
-            pkt = new DatagramPacket(seg.getBytes(), Segment.MAX_SEGMENT_SIZE, InetAddress.getByName(serverName), serverPort);
+            pkt = new DatagramPacket(seg.getBytes(), (Segment.MAX_SEGMENT_SIZE - (Segment.MAX_PAYLOAD_SIZE - seg.getLength())), InetAddress.getByName(serverName), serverPort);
         } catch (UnknownHostException ex) {
             ex.printStackTrace();
         }
@@ -209,7 +256,6 @@ public class FastFtp {
         try {
             window.add(seg);
         } catch (InterruptedException ex) {
-            // TODO deal with exception
             ex.printStackTrace();
         }
         
@@ -218,6 +264,25 @@ public class FastFtp {
             timer.schedule(new TimerHandler(this), timeout);
         }
     }
+    
+    public synchronized void reSend(Segment seg)    {
+        if (DEBUG)
+            System.out.println("Resending segment " + seg.getSeqNum());
+         // Send the segment
+        DatagramPacket pkt = null;
+        try {
+            pkt = new DatagramPacket(seg.getBytes(), (Segment.MAX_SEGMENT_SIZE - (Segment.MAX_PAYLOAD_SIZE - seg.getLength())), InetAddress.getByName(serverName), serverPort);
+        } catch (UnknownHostException ex) {
+            ex.printStackTrace();
+        }
+        try {
+            socket_UDP.send(pkt);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            System.exit(-1);
+        }
+    }
+    
     
     /**<h1>Process ACK</h1>
      * <ul>
@@ -236,16 +301,20 @@ public class FastFtp {
      * @param ack the received ack
      */
     public synchronized void processACK(Segment ack)    {
-        System.out.println("Starting to process ACK");
-        if (ack.getSeqNum() >= window.element().getSeqNum() && (ack.getSeqNum() < (window.element().getSeqNum() + window.size())))  {
-            while (window.element().getSeqNum() <= ack.getSeqNum()) {
+        if (DEBUG)
+            System.out.println("Processing ACK # " + ack.getSeqNum());
+        
+        if (ack.getSeqNum() > window.element().getSeqNum() && (ack.getSeqNum() <= (window.element().getSeqNum() + window.size())))  {
+            while (window.element().getSeqNum() < ack.getSeqNum()) {
                 try {
-                    System.out.println("Removing segment from window");
+                    System.out.println("Removing segment " + window.element().getSeqNum() + " from window");
                     window.remove();
                 } catch (InterruptedException ex) {
-                    //TODO deal with exception
                     ex.printStackTrace();
+                    System.exit(-1);
                 }
+                if (window.isEmpty())
+                    break;
             }
             if (!window.isEmpty())  {
                 timer.cancel();
@@ -263,9 +332,12 @@ public class FastFtp {
      * </ol>
      */
     public synchronized void processTimeout()   {
+        if (DEBUG)
+            System.out.println("Timeout has occured");
         Segment[] segments = window.toArray();
         for (Segment i: segments)   {
-            processSend(i);
+            System.out.println("Resending segment " + i.getSeqNum());
+            reSend(i);
         }
         if (!window.isEmpty())  {
             timer.cancel();
