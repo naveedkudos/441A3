@@ -16,6 +16,7 @@ public class Acknowledge extends Thread {
     private boolean TERMINATE;
     DatagramSocket server;
     FastFtp parent;
+    boolean DEBUG = false;
     
     public Acknowledge(DatagramSocket serverSocket, FastFtp parent)    {
         System.out.println("Starting the ACK Thread");
@@ -31,7 +32,8 @@ public class Acknowledge extends Thread {
             DatagramPacket pkt = new DatagramPacket(data, data.length);
             try {
                 server.receive(pkt);
-                System.out.println("Received a packet from the server");
+                if (DEBUG)
+                    System.out.println("Received a packet from the server");
             } catch (SocketException ex)    {
                 TERMINATE = true;
                 break;
@@ -40,6 +42,7 @@ public class Acknowledge extends Thread {
             }
             parent.processACK(new Segment(pkt));
         }
+        System.out.println("Terminating ACK thread");
     }
     
     /**

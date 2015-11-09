@@ -9,8 +9,6 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Timer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * FastFtp Class
@@ -29,7 +27,7 @@ public class FastFtp {
     String serverName;
     int serverPort;
     
-    boolean DEBUG = true;
+    boolean DEBUG = false;
 
     /**
      * Constructor to initialize the program
@@ -307,7 +305,8 @@ public class FastFtp {
         if (ack.getSeqNum() > window.element().getSeqNum() && (ack.getSeqNum() <= (window.element().getSeqNum() + window.size())))  {
             while (window.element().getSeqNum() < ack.getSeqNum()) {
                 try {
-                    System.out.println("Removing segment " + window.element().getSeqNum() + " from window");
+                    if (DEBUG)
+                        System.out.println("Removing segment " + window.element().getSeqNum() + " from window");
                     window.remove();
                 } catch (InterruptedException ex) {
                     ex.printStackTrace();
@@ -336,7 +335,6 @@ public class FastFtp {
             System.out.println("Timeout has occured");
         Segment[] segments = window.toArray();
         for (Segment i: segments)   {
-            System.out.println("Resending segment " + i.getSeqNum());
             reSend(i);
         }
         if (!window.isEmpty())  {
